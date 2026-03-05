@@ -802,7 +802,16 @@
       const merged = baseScenes.filter(s => !s.isSearchResult).concat(newScenes);
       window._dynamicScenes = merged;
 
-      // 重建 bgSlides：只補新圖，不重建已有的
+      // 移除舊的搜尋結果 DOM 元素（它們永遠在陣列末尾）
+      const currentScenes = window.SCENES_DATA;
+      if (currentScenes) {
+        const oldSearchCount = currentScenes.filter(s => s.isSearchResult).length;
+        if (oldSearchCount > 0) {
+          bgSlides.splice(-oldSearchCount).forEach(el => el.remove());
+        }
+      }
+
+      // 重建 bgSlides：補入新圖的 DOM 元素
       newScenes.forEach(s => {
         const el = document.createElement('div');
         el.className = 'bg-slide';

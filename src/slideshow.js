@@ -245,15 +245,15 @@ async function fetchRandomScene(keyword, biome) {
   const safeBiome = biome || 'mountain';
   const bust = Date.now();
 
-  // Unsplash Source 免費 CDN：每次 redirect 到不同隨機圖
-  const imgUrl   = `https://source.unsplash.com/1600x900/?${safeKeyword}&sig=${bust}`;
-  const thumbUrl = `https://source.unsplash.com/120x120/?${safeKeyword}&sig=${bust}`;
+  // loremflickr：以關鍵字取得隨機風景照，lock 確保每張不同
+  const imgUrl   = `https://loremflickr.com/1600/900/${safeKeyword}?lock=${bust}`;
+  const thumbUrl = `https://loremflickr.com/120/120/${safeKeyword}?lock=${bust}`;
 
   return {
     biome: BIOMES.some(b => b.key === safeBiome) ? safeBiome : 'mountain',
     region: `🔍 "${keyword}" 搜尋結果`,
     title: `關於「${keyword}」的風景`,
-    desc: `由 Unsplash 依關鍵字「${keyword}」隨機推薦的世界風景照片。`,
+    desc: `依關鍵字「${keyword}」隨機推薦的世界風景照片。`,
     img: imgUrl,
     thumb: thumbUrl,
     isSearchResult: true
@@ -278,9 +278,9 @@ async function fetchRandomScenes(keyword, count, biome) {
       biome: BIOMES.some(function (b) { return b.key === safeBiome; }) ? safeBiome : 'mountain',
       region: `🔍 "${keyword}" 搜尋結果`,
       title: `關於「${keyword}」的風景 #${i + 1}`,
-      desc: `由 Unsplash 依關鍵字「${keyword}」隨機推薦的世界風景照片。`,
-      img: `https://source.unsplash.com/1600x900/?${safeKeyword}&sig=${bust}`,
-      thumb: `https://source.unsplash.com/120x120/?${safeKeyword}&sig=${bust}`,
+      desc: `依關鍵字「${keyword}」隨機推薦的世界風景照片。`,
+      img: `https://loremflickr.com/1600/900/${safeKeyword}?lock=${bust}`,
+      thumb: `https://loremflickr.com/120/120/${safeKeyword}?lock=${bust}`,
       isSearchResult: true
     });
   }

@@ -438,7 +438,7 @@ describe('fetchRandomScene', () => {
 
   test('空關鍵字時仍產生合法 URL', async () => {
     const scene = await fetchRandomScene('');
-    expect(scene.img).toMatch(/unsplash\.com/);
+    expect(scene.img).toMatch(/loremflickr\.com/);
   });
 });
 
@@ -463,10 +463,10 @@ describe('fetchRandomScenes', () => {
     expect(scenes.length).toBeGreaterThanOrEqual(1);
   });
 
-  test('各 scene 的 img URL 含不同 sig（避免重複圖片）', async () => {
+  test('各 scene 的 img URL 含不同 lock（避免重複圖片）', async () => {
     const scenes = await fetchRandomScenes('canyon', 3);
-    const sigs = scenes.map(s => new URL(s.img).searchParams.get('sig'));
-    const uniqueSigs = new Set(sigs);
-    expect(uniqueSigs.size).toBe(3);
+    const locks = scenes.map(s => new URL(s.img).searchParams.get('lock'));
+    const uniqueLocks = new Set(locks);
+    expect(uniqueLocks.size).toBe(3);
   });
 });
