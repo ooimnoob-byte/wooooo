@@ -313,6 +313,94 @@
       z-index: 15;
     }
 
+    /* ── 搜尋列 ── */
+    #search-bar {
+      position: fixed;
+      top: 72px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 12;
+      display: flex;
+      gap: 8px;
+      width: min(560px, calc(100vw - 40px));
+    }
+
+    #search-input {
+      flex: 1;
+      padding: 10px 18px;
+      border-radius: 24px;
+      border: 1px solid var(--glass-border);
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(14px);
+      color: #fff;
+      font-size: 0.9rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    #search-input::placeholder { color: rgba(255,255,255,0.4); }
+    #search-input:focus {
+      border-color: var(--accent);
+      background: rgba(0,0,0,0.7);
+    }
+
+    #search-btn {
+      padding: 10px 20px;
+      border-radius: 24px;
+      border: none;
+      background: var(--accent);
+      color: #000;
+      font-weight: 700;
+      font-size: 0.85rem;
+      font-family: inherit;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.15s;
+      white-space: nowrap;
+    }
+
+    #search-btn:hover { opacity: 0.85; transform: scale(1.04); }
+    #search-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+    /* 搜尋結果數量選擇器 */
+    #search-count {
+      padding: 10px 12px;
+      border-radius: 24px;
+      border: 1px solid var(--glass-border);
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(14px);
+      color: #fff;
+      font-size: 0.82rem;
+      font-family: inherit;
+      cursor: pointer;
+      outline: none;
+    }
+
+    #search-count option { background: #111; }
+
+    /* 搜尋中載入指示 */
+    .search-loading #search-btn::after {
+      content: '';
+      display: inline-block;
+      width: 10px; height: 10px;
+      border: 2px solid #000;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* 搜尋結果標籤（slide biome label 變體） */
+    .biome-chip.search-active {
+      background: #60c8ff;
+      color: #000;
+      border-color: #60c8ff;
+      font-weight: 700;
+    }
+
     /* ── 生態域篩選列 ── */
     #biome-filter {
       display: flex;
@@ -400,6 +488,18 @@
   </div>
 </header>
 
+<!-- 搜尋列 -->
+<div id="search-bar">
+  <input id="search-input" type="text" placeholder="🔍 輸入關鍵字搜尋風景照片（英文更佳）…" maxlength="80" />
+  <select id="search-count" title="搜尋結果數量">
+    <option value="4">4 張</option>
+    <option value="6" selected>6 張</option>
+    <option value="10">10 張</option>
+    <option value="16">16 張</option>
+  </select>
+  <button id="search-btn" onclick="doSearch()">搜尋</button>
+</div>
+
 <!-- 推播通知 -->
 <div id="notification-stack"></div>
 
@@ -484,10 +584,11 @@
 
   // ── 篩選設定 ──
   function setFilter(biomeKey) {
+    const scenes = window.SCENES_DATA || SCENES_DATA;
     activeFilter = biomeKey;
     filteredIndices = biomeKey === 'all'
-      ? SCENES_DATA.map((_, i) => i)
-      : SCENES_DATA.reduce((acc, s, i) => { if (s.biome === biomeKey) acc.push(i); return acc; }, []);
+      ? scenes.map((_, i) => i)
+      : scenes.reduce((acc, s, i) => { if (s.biome === biomeKey) acc.push(i); return acc; }, []);
 
     document.querySelectorAll('.biome-chip').forEach(c => {
       c.classList.toggle('active', c.dataset.biome === biomeKey);
@@ -522,7 +623,7 @@
     const globalIdx = filteredIndices[currentPos];
     bgSlides.forEach((sl, i) => sl.classList.toggle('active', i === globalIdx));
 
-    const s = SCENES_DATA[globalIdx];
+    const s = (window.SCENES_DATA || SCENES_DATA)[globalIdx];
     document.getElementById('slide-region').textContent = s.region;
     document.getElementById('slide-title').textContent = s.title;
     document.getElementById('slide-desc').textContent = s.desc;
@@ -598,7 +699,7 @@
   let notifShowing = false;
 
   function showSlideNotification(globalIdx) {
-    notifQueue.push({ scene: SCENES_DATA[globalIdx], type: 'slide' });
+    notifQueue.push({ scene: (window.SCENES_DATA || SCENES_DATA)[globalIdx], type: 'slide' });
     if (!notifShowing) processNotifQueue();
   }
 
@@ -608,7 +709,7 @@
     const candidates = filteredIndices.filter((_, i) => i !== currentPos);
     const targetGlobal = candidates[Math.floor(Math.random() * candidates.length)];
     const targetPos = filteredIndices.indexOf(targetGlobal);
-    notifQueue.push({ scene: SCENES_DATA[targetGlobal], type: 'random', targetPos });
+    notifQueue.push({ scene: (window.SCENES_DATA || SCENES_DATA)[targetGlobal], type: 'random', targetPos });
     if (!notifShowing) processNotifQueue();
   }
 
@@ -679,7 +780,93 @@
     if (Math.abs(dx) > 50) dx < 0 ? nextSlide() : prevSlide();
   });
 
+  // ── 搜尋功能 ──
+  let isSearchMode = false;
+
+  async function doSearch() {
+    const keyword = document.getElementById('search-input').value.trim();
+    if (!keyword) {
+      document.getElementById('search-input').focus();
+      return;
+    }
+    const count = parseInt(document.getElementById('search-count').value, 10);
+    const btn = document.getElementById('search-btn');
+    btn.disabled = true;
+    document.getElementById('search-bar').classList.add('search-loading');
+
+    try {
+      const newScenes = await fetchRandomScenes(keyword, count, activeFilter === 'all' ? 'mountain' : activeFilter);
+
+      // 移除之前的搜尋結果，插入新的
+      const baseScenes = window._baseScenes || SCENES_DATA;
+      const merged = baseScenes.filter(s => !s.isSearchResult).concat(newScenes);
+      window._dynamicScenes = merged;
+
+      // 重建 bgSlides：只補新圖，不重建已有的
+      newScenes.forEach(s => {
+        const el = document.createElement('div');
+        el.className = 'bg-slide';
+        el.style.backgroundImage = `url('${s.img}')`;
+        bgContainer.appendChild(el);
+        bgSlides.push(el);
+      });
+
+      // 以新資料集取代 SCENES_DATA 參考
+      Object.defineProperty(window, 'SCENES_DATA', { value: merged, writable: true, configurable: true });
+
+      isSearchMode = true;
+      activeFilter = 'all';
+
+      // 重建 biome chips 計數（包含搜尋結果）
+      rebuildBiomeChips();
+      setFilter('all');
+
+      // 跳至第一張搜尋結果
+      const firstSearchPos = filteredIndices.findIndex(i => merged[i] && merged[i].isSearchResult);
+      if (firstSearchPos >= 0) goToPos(firstSearchPos, false);
+    } finally {
+      btn.disabled = false;
+      document.getElementById('search-bar').classList.remove('search-loading');
+    }
+  }
+
+  // Enter 鍵觸發搜尋
+  document.getElementById('search-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doSearch();
+  });
+
+  function rebuildBiomeChips() {
+    biomeFilterEl.innerHTML = '';
+    const currentScenes = window.SCENES_DATA || SCENES_DATA;
+    BIOMES.forEach(b => {
+      const chip = document.createElement('button');
+      chip.dataset.biome = b.key;
+      const count = b.key === 'all' ? currentScenes.length : currentScenes.filter(s => s.biome === b.key).length;
+      chip.textContent = b.key === 'all' ? `${b.emoji} ${b.label}` : `${b.emoji} ${b.label} (${count})`;
+      chip.className = 'biome-chip' + (b.key === activeFilter ? ' active' : '');
+      chip.onclick = () => setFilter(b.key);
+      biomeFilterEl.appendChild(chip);
+    });
+    // 若有搜尋結果，加入「搜尋結果」快捷 chip
+    if (currentScenes.some(s => s.isSearchResult)) {
+      const searchChip = document.createElement('button');
+      searchChip.className = 'biome-chip search-active';
+      searchChip.textContent = '🔍 搜尋結果';
+      searchChip.onclick = () => {
+        // 只顯示搜尋結果
+        filteredIndices = currentScenes.reduce((acc, s, i) => { if (s.isSearchResult) acc.push(i); return acc; }, []);
+        document.querySelectorAll('.biome-chip').forEach(c => c.classList.remove('active'));
+        searchChip.classList.add('active');
+        currentPos = 0;
+        rebuildDots();
+        renderSlide(false);
+      };
+      biomeFilterEl.appendChild(searchChip);
+    }
+  }
+
   // ── 啟動 ──
+  window._baseScenes = SCENES_DATA.slice();
   setFilter('all');
   startAuto();
   startRandomPush();

@@ -230,6 +230,63 @@ function getBiomes(scenes) {
     .filter(function (b) { return b && !seen.has(b) && seen.add(b); });
 }
 
+// ── Unsplash 隨機搜尋 ──────────────────────────────────────
+/**
+ * 依關鍵字向 Unsplash Source API 取得隨機照片，
+ * 回傳符合 SCENES_DATA 格式的景點物件。
+ * 使用 cache-bust 避免瀏覽器快取同一張圖。
+ *
+ * @param {string} keyword - 搜尋關鍵字（英文效果最佳）
+ * @param {string} [biome='mountain'] - 指定生態域分類
+ * @returns {Promise<Object>} scene 物件（shape 與 SCENES_DATA 一致）
+ */
+async function fetchRandomScene(keyword, biome) {
+  const safeKeyword = encodeURIComponent(keyword.trim()) || 'landscape';
+  const safeBiome = biome || 'mountain';
+  const bust = Date.now();
+
+  // Unsplash Source 免費 CDN：每次 redirect 到不同隨機圖
+  const imgUrl   = `https://source.unsplash.com/1600x900/?${safeKeyword}&sig=${bust}`;
+  const thumbUrl = `https://source.unsplash.com/120x120/?${safeKeyword}&sig=${bust}`;
+
+  return {
+    biome: BIOMES.some(b => b.key === safeBiome) ? safeBiome : 'mountain',
+    region: `🔍 "${keyword}" 搜尋結果`,
+    title: `關於「${keyword}」的風景`,
+    desc: `由 Unsplash 依關鍵字「${keyword}」隨機推薦的世界風景照片。`,
+    img: imgUrl,
+    thumb: thumbUrl,
+    isSearchResult: true
+  };
+}
+
+/**
+ * 批次取得多張隨機搜尋結果景點（每張使用不同 sig 確保圖片相異）
+ * @param {string} keyword
+ * @param {number} count - 要取得的張數
+ * @param {string} [biome]
+ * @returns {Promise<Object[]>}
+ */
+async function fetchRandomScenes(keyword, count, biome) {
+  const safeCount = Math.max(1, Math.min(count || 6, 20));
+  const scenes = [];
+  for (var i = 0; i < safeCount; i++) {
+    const safeKeyword = encodeURIComponent(keyword.trim()) || 'landscape';
+    const safeBiome = biome || 'mountain';
+    const bust = Date.now() + i * 1000;
+    scenes.push({
+      biome: BIOMES.some(function (b) { return b.key === safeBiome; }) ? safeBiome : 'mountain',
+      region: `🔍 "${keyword}" 搜尋結果`,
+      title: `關於「${keyword}」的風景 #${i + 1}`,
+      desc: `由 Unsplash 依關鍵字「${keyword}」隨機推薦的世界風景照片。`,
+      img: `https://source.unsplash.com/1600x900/?${safeKeyword}&sig=${bust}`,
+      thumb: `https://source.unsplash.com/120x120/?${safeKeyword}&sig=${bust}`,
+      isSearchResult: true
+    });
+  }
+  return scenes;
+}
+
 // ── CommonJS export（Node.js / Jest 環境）──────────────────
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
@@ -246,6 +303,8 @@ if (typeof module !== 'undefined' && module.exports) {
     validateScene,
     filterByBiome,
     pickRandom,
-    getBiomes
+    getBiomes,
+    fetchRandomScene,
+    fetchRandomScenes
   };
 }

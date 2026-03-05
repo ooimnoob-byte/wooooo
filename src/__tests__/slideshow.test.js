@@ -21,7 +21,9 @@ const {
   validateScene,
   filterByBiome,
   pickRandom,
-  getBiomes
+  getBiomes,
+  fetchRandomScene,
+  fetchRandomScenes
 } = require('../../src/slideshow');
 
 // ════════════════════════════════════════════════════════════
@@ -401,5 +403,70 @@ describe('getBiomes', () => {
     expect(allBiome).toBeDefined();
     expect(allBiome.label).toBeTruthy();
     expect(allBiome.emoji).toBeTruthy();
+  });
+});
+
+// ════════════════════════════════════════════════════════════
+// 11. 隨機搜尋：fetchRandomScene / fetchRandomScenes
+// ════════════════════════════════════════════════════════════
+describe('fetchRandomScene', () => {
+  test('回傳 Promise', () => {
+    const result = fetchRandomScene('mountain');
+    expect(result).toBeInstanceOf(Promise);
+  });
+
+  test('resolve 後回傳符合 scene 格式的物件（含 biome）', async () => {
+    const scene = await fetchRandomScene('forest', 'forest');
+    expect(typeof scene.region).toBe('string');
+    expect(typeof scene.title).toBe('string');
+    expect(typeof scene.desc).toBe('string');
+    expect(scene.img).toMatch(/^https?:\/\//);
+    expect(scene.thumb).toMatch(/^https?:\/\//);
+    expect(typeof scene.biome).toBe('string');
+    expect(scene.isSearchResult).toBe(true);
+  });
+
+  test('包含關鍵字於 title 或 desc', async () => {
+    const scene = await fetchRandomScene('ocean');
+    expect(scene.title + scene.desc).toContain('ocean');
+  });
+
+  test('不合法 biome 時 fallback 為 mountain', async () => {
+    const scene = await fetchRandomScene('desert', 'nonexistent_biome');
+    expect(scene.biome).toBe('mountain');
+  });
+
+  test('空關鍵字時仍產生合法 URL', async () => {
+    const scene = await fetchRandomScene('');
+    expect(scene.img).toMatch(/unsplash\.com/);
+  });
+});
+
+describe('fetchRandomScenes', () => {
+  test('回傳指定數量的 scene 陣列', async () => {
+    const scenes = await fetchRandomScenes('waterfall', 3);
+    expect(scenes).toHaveLength(3);
+  });
+
+  test('每個 scene 均有 isSearchResult = true', async () => {
+    const scenes = await fetchRandomScenes('glacier', 2);
+    scenes.forEach(s => expect(s.isSearchResult).toBe(true));
+  });
+
+  test('count 超過 20 時截斷為 20', async () => {
+    const scenes = await fetchRandomScenes('lake', 99);
+    expect(scenes).toHaveLength(20);
+  });
+
+  test('count 小於 1 時至少回傳 1 筆', async () => {
+    const scenes = await fetchRandomScenes('river', 0);
+    expect(scenes.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('各 scene 的 img URL 含不同 sig（避免重複圖片）', async () => {
+    const scenes = await fetchRandomScenes('canyon', 3);
+    const sigs = scenes.map(s => new URL(s.img).searchParams.get('sig'));
+    const uniqueSigs = new Set(sigs);
+    expect(uniqueSigs.size).toBe(3);
   });
 });
