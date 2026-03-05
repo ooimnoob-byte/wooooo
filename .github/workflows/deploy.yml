@@ -1,0 +1,76 @@
+name: CI / Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# 授予寫入 GitHub Pages 所需的權限
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一時間只允許一個部署任務執行
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  # ─── Job 1：執行測試 ──────────────────────────────────────
+  test:
+    name: Run Tests (Jest)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout 程式碼
+        uses: actions/checkout@v4
+
+      - name: 設定 Node.js 環境
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 安裝相依套件
+        run: npm ci
+
+      - name: 執行單元測試（含覆蓋率報告）
+        run: npm test
+
+      - name: 上傳覆蓋率報告（Artifact）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14
+
+  # ─── Job 2：部署到 GitHub Pages（僅限 main 分支推送）────────
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: test                    # 測試全部通過才部署
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - name: Checkout 程式碼
+        uses: actions/checkout@v4
+
+      - name: 設定 GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: 上傳網站檔案
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # 部署整個 repo 根目錄（含 index.html 與 src/）
+          path: '.'
+
+      - name: 部署至 GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4

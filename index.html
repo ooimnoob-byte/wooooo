@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>世界風景 · World Scenery</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --accent: #f0c040;
+      --dark: #0d0d0d;
+      --glass: rgba(255, 255, 255, 0.08);
+      --glass-border: rgba(255, 255, 255, 0.18);
+    }
+
+    body {
+      font-family: 'Segoe UI', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+      background: var(--dark);
+      color: #fff;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── 全螢幕背景輪播 ── */
+    #bg-container {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+    }
+
+    .bg-slide {
+      position: absolute;
+      inset: 0;
+      background-size: cover;
+      background-position: center;
+      opacity: 0;
+      transition: opacity 1.6s ease-in-out, transform 8s ease-in-out;
+      transform: scale(1.06);
+    }
+
+    .bg-slide.active {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    /* 漸層遮罩 */
+    #overlay {
+      position: fixed;
+      inset: 0;
+      background: linear-gradient(
+        to bottom,
+        rgba(0,0,0,0.25) 0%,
+        rgba(0,0,0,0.10) 40%,
+        rgba(0,0,0,0.55) 100%
+      );
+      z-index: 1;
+    }
+
+    /* ── 頂部標題列 ── */
+    header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 22px 36px;
+      backdrop-filter: blur(6px);
+      background: linear-gradient(to bottom, rgba(0,0,0,0.45), transparent);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    .logo span.dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.4); }
+    }
+
+    .auto-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.78rem;
+      letter-spacing: 1px;
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      border-radius: 20px;
+      padding: 6px 14px;
+      backdrop-filter: blur(8px);
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .auto-badge:hover { background: rgba(255,255,255,0.15); }
+
+    .auto-badge .indicator {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #4caf50;
+      transition: background 0.3s;
+    }
+
+    .auto-badge.paused .indicator { background: #f44336; }
+
+    /* ── 推播通知卡片 ── */
+    #notification-stack {
+      position: fixed;
+      top: 90px;
+      right: 28px;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 320px;
+      pointer-events: none;
+    }
+
+    .notif-card {
+      background: rgba(20, 20, 20, 0.78);
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
+      padding: 14px 16px;
+      backdrop-filter: blur(20px);
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      pointer-events: all;
+      transform: translateX(140%);
+      opacity: 0;
+      transition: transform 0.5s cubic-bezier(0.22,1,0.36,1), opacity 0.5s;
+      cursor: pointer;
+    }
+
+    .notif-card.show {
+      transform: translateX(0);
+      opacity: 1;
+    }
+
+    .notif-card.hide {
+      transform: translateX(140%);
+      opacity: 0;
+    }
+
+    .notif-thumb {
+      width: 52px; height: 52px;
+      border-radius: 10px;
+      background-size: cover;
+      background-position: center;
+      flex-shrink: 0;
+    }
+
+    .notif-body { flex: 1; overflow: hidden; }
+
+    .notif-title {
+      font-size: 0.78rem;
+      color: var(--accent);
+      letter-spacing: 1px;
+      margin-bottom: 3px;
+      text-transform: uppercase;
+    }
+
+    .notif-name {
+      font-size: 0.95rem;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .notif-desc {
+      font-size: 0.72rem;
+      color: rgba(255,255,255,0.55);
+      margin-top: 2px;
+    }
+
+    /* ── 底部資訊 & 控制 ── */
+    #info-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 10;
+      padding: 28px 40px 34px;
+      background: linear-gradient(to top, rgba(0,0,0,0.75), transparent);
+    }
+
+    .location-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 0.72rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+
+    .location-tag svg { width: 13px; height: 13px; fill: var(--accent); }
+
+    #slide-title {
+      font-size: clamp(1.8rem, 4vw, 3.2rem);
+      font-weight: 800;
+      line-height: 1.15;
+      margin-bottom: 6px;
+      text-shadow: 0 2px 16px rgba(0,0,0,0.6);
+      transition: opacity 0.6s;
+    }
+
+    #slide-desc {
+      font-size: 0.88rem;
+      color: rgba(255,255,255,0.65);
+      max-width: 560px;
+      line-height: 1.6;
+      transition: opacity 0.6s;
+    }
+
+    /* 控制列 */
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      margin-top: 22px;
+    }
+
+    .ctrl-btn {
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      border: 1px solid var(--glass-border);
+      background: var(--glass);
+      backdrop-filter: blur(8px);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.15s;
+      color: #fff;
+    }
+
+    .ctrl-btn:hover {
+      background: rgba(255,255,255,0.2);
+      transform: scale(1.1);
+    }
+
+    .ctrl-btn svg { width: 18px; height: 18px; fill: #fff; }
+
+    /* 進度點 */
+    #dots {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: 6px;
+    }
+
+    .dot-item {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.35);
+      cursor: pointer;
+      transition: background 0.3s, transform 0.3s;
+    }
+
+    .dot-item.active {
+      background: var(--accent);
+      transform: scale(1.45);
+    }
+
+    /* 進度條 */
+    #progress-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      height: 3px;
+      background: var(--accent);
+      z-index: 30;
+      width: 0%;
+      transition: width 0.1s linear;
+    }
+
+    /* 幻燈片計數 */
+    .counter {
+      margin-left: auto;
+      font-size: 0.72rem;
+      letter-spacing: 2px;
+      color: rgba(255,255,255,0.45);
+    }
+
+    /* 全螢幕按鈕 */
+    #fullscreen-btn {
+      position: fixed;
+      top: 22px;
+      right: 36px;
+      z-index: 15;
+    }
+
+    /* ── 響應式 ── */
+    @media (max-width: 600px) {
+      header { padding: 16px 20px; }
+      #info-bar { padding: 20px 20px 28px; }
+      #notification-stack { width: calc(100vw - 40px); right: 20px; top: 80px; }
+      #slide-title { font-size: 1.8rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- 背景輪播 -->
+<div id="bg-container"></div>
+<div id="overlay"></div>
+
+<!-- 頂部 -->
+<header>
+  <div class="logo">
+    <span class="dot"></span>
+    World Scenery
+  </div>
+  <div class="auto-badge" id="auto-badge" onclick="toggleAuto()">
+    <span class="indicator"></span>
+    <span id="auto-label">自動播放中</span>
+  </div>
+</header>
+
+<!-- 推播通知 -->
+<div id="notification-stack"></div>
+
+<!-- 底部資訊 -->
+<div id="info-bar">
+  <div class="location-tag">
+    <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z"/></svg>
+    <span id="slide-region">Loading...</span>
+  </div>
+  <div id="slide-title">載入中...</div>
+  <div id="slide-desc">準備帶您環遊世界</div>
+
+  <div class="controls">
+    <button class="ctrl-btn" onclick="prevSlide()" title="上一張">
+      <svg viewBox="0 0 24 24"><path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6z"/></svg>
+    </button>
+    <button class="ctrl-btn" onclick="nextSlide()" title="下一張">
+      <svg viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg>
+    </button>
+    <div id="dots"></div>
+    <div class="counter"><span id="cur-num">1</span> / <span id="total-num">1</span></div>
+  </div>
+</div>
+
+<!-- 底部進度條 -->
+<div id="progress-bar"></div>
+
+<!-- 核心邏輯模組（純函式＋景點資料） -->
+<script src="src/slideshow.js"></script>
+
+<script>
+  // 使用模組提供的景點資料與純函式
+  const scenes = SCENES_DATA;
+
+  // ── 狀態 ──
+  let current = 0;
+  let isAuto = true;
+  let timer = null;
+  let progressTimer = null;
+  let progressValue = 0;
+  const INTERVAL = 7000; // ms
+
+  // ── 初始化 DOM ──
+  const bgContainer = document.getElementById('bg-container');
+  const dotsEl = document.getElementById('dots');
+  const totalNumEl = document.getElementById('total-num');
+  const curNumEl = document.getElementById('cur-num');
+  const progressBar = document.getElementById('progress-bar');
+  const notifStack = document.getElementById('notification-stack');
+
+  // 建立背景 slide
+  const bgSlides = scenes.map((s, i) => {
+    const el = document.createElement('div');
+    el.className = 'bg-slide';
+    el.style.backgroundImage = `url('${s.img}')`;
+    bgContainer.appendChild(el);
+    return el;
+  });
+
+  // 建立進度點
+  totalNumEl.textContent = scenes.length;
+  scenes.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'dot-item';
+    d.onclick = () => goTo(i);
+    dotsEl.appendChild(d);
+  });
+
+  // ── 切換幻燈片 ──
+  function goTo(index, fromNotif = false) {
+    bgSlides[current].classList.remove('active');
+    dotsEl.children[current].classList.remove('active');
+
+    current = (index + scenes.length) % scenes.length;
+
+    bgSlides[current].classList.add('active');
+    dotsEl.children[current].classList.add('active');
+    curNumEl.textContent = current + 1;
+
+    const s = scenes[current];
+    document.getElementById('slide-region').textContent = s.region;
+    document.getElementById('slide-title').textContent = s.title;
+    document.getElementById('slide-desc').textContent = s.desc;
+
+    resetProgress();
+    if (!fromNotif) showNotification(current);
+  }
+
+  function nextSlide() { goTo(current + 1); }
+  function prevSlide() { goTo(current - 1); }
+
+  // ── 自動播放 ──
+  function startAuto() {
+    clearInterval(timer);
+    timer = setInterval(() => {
+      nextSlide();
+    }, INTERVAL);
+  }
+
+  function stopAuto() { clearInterval(timer); clearInterval(progressTimer); }
+
+  function toggleAuto() {
+    isAuto = !isAuto;
+    const badge = document.getElementById('auto-badge');
+    const label = document.getElementById('auto-label');
+    if (isAuto) {
+      badge.classList.remove('paused');
+      label.textContent = '自動播放中';
+      startAuto();
+      startProgress();
+    } else {
+      badge.classList.add('paused');
+      label.textContent = '已暫停';
+      stopAuto();
+    }
+  }
+
+  // ── 進度條 ──
+  function resetProgress() {
+    clearInterval(progressTimer);
+    progressValue = 0;
+    progressBar.style.transition = 'none';
+    progressBar.style.width = '0%';
+    if (isAuto) {
+      requestAnimationFrame(() => startProgress());
+    }
+  }
+
+  function startProgress() {
+    clearInterval(progressTimer);
+    const step = 100 / (INTERVAL / 100);
+    progressBar.style.transition = 'width 0.1s linear';
+    progressTimer = setInterval(() => {
+      progressValue += step;
+      if (progressValue >= 100) {
+        progressValue = 100;
+        clearInterval(progressTimer);
+      }
+      progressBar.style.width = progressValue + '%';
+    }, 100);
+  }
+
+  // ── 推播通知 ──
+  let notifQueue = [];
+  let notifShowing = false;
+
+  function showNotification(index) {
+    const s = scenes[index];
+    notifQueue.push(s);
+    if (!notifShowing) processNotifQueue();
+  }
+
+  function processNotifQueue() {
+    if (notifQueue.length === 0) { notifShowing = false; return; }
+    notifShowing = true;
+    const s = notifQueue.shift();
+
+    // 最多保留 3 張
+    while (notifStack.children.length >= 3) {
+      const oldest = notifStack.firstElementChild;
+      oldest.classList.add('hide');
+      setTimeout(() => oldest.remove(), 500);
+    }
+
+    const card = document.createElement('div');
+    card.className = 'notif-card';
+    card.innerHTML = `
+      <div class="notif-thumb" style="background-image:url('${s.thumb}')"></div>
+      <div class="notif-body">
+        <div class="notif-title">📍 ${s.region}</div>
+        <div class="notif-name">${s.title}</div>
+        <div class="notif-desc">點擊停留此景點</div>
+      </div>
+    `;
+    card.onclick = () => {
+      isAuto = false;
+      const badge = document.getElementById('auto-badge');
+      badge.classList.add('paused');
+      document.getElementById('auto-label').textContent = '已暫停';
+      stopAuto();
+      dismissCard(card);
+    };
+    notifStack.appendChild(card);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => card.classList.add('show'));
+    });
+
+    // 4 秒後自動消失
+    setTimeout(() => {
+      dismissCard(card);
+      setTimeout(processNotifQueue, 300);
+    }, 4000);
+  }
+
+  function dismissCard(card) {
+    card.classList.remove('show');
+    card.classList.add('hide');
+    setTimeout(() => { if (card.parentNode) card.remove(); }, 500);
+  }
+
+  // ── 鍵盤快捷鍵 ──
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') nextSlide();
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') prevSlide();
+    if (e.key === ' ') { e.preventDefault(); toggleAuto(); }
+  });
+
+  // ── 觸控滑動 ──
+  let touchStartX = 0;
+  document.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; });
+  document.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    if (Math.abs(dx) > 50) dx < 0 ? nextSlide() : prevSlide();
+  });
+
+  // ── 啟動 ──
+  goTo(0);
+  startAuto();
+  startProgress();
+</script>
+</body>
+</html>
