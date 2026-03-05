@@ -9,6 +9,7 @@
 
 const {
   SCENES_DATA,
+  BIOMES,
   DEFAULT_INTERVAL,
   wrapIndex,
   createState,
@@ -17,7 +18,10 @@ const {
   prev,
   toggleAuto,
   getCurrentScene,
-  validateScene
+  validateScene,
+  filterByBiome,
+  pickRandom,
+  getBiomes
 } = require('../../src/slideshow');
 
 // ════════════════════════════════════════════════════════════
@@ -200,7 +204,7 @@ describe('getCurrentScene', () => {
 // 6. 景點驗證：validateScene
 // ════════════════════════════════════════════════════════════
 describe('validateScene', () => {
-  const valid = { region: '冰島', title: '極光', desc: '美麗', img: 'http://img', thumb: 'http://th' };
+  const valid = { biome: 'polar', region: '冰島', title: '極光', desc: '美麗', img: 'http://img', thumb: 'http://th' };
 
   test('完整景點通過驗證', () => {
     expect(validateScene(valid)).toBe(true);
@@ -268,5 +272,134 @@ describe('SCENES_DATA', () => {
     expect(typeof DEFAULT_INTERVAL).toBe('number');
     expect(DEFAULT_INTERVAL).toBeGreaterThan(0);
     expect(Number.isInteger(DEFAULT_INTERVAL)).toBe(true);
+  });
+
+  test('每筆景點均含有合法的 biome 欄位', () => {
+    const validBiomeKeys = BIOMES.filter(b => b.key !== 'all').map(b => b.key);
+    SCENES_DATA.forEach(scene => {
+      expect(validBiomeKeys).toContain(scene.biome);
+    });
+  });
+});
+
+// ════════════════════════════════════════════════════════════
+// 8. 生態域篩選：filterByBiome
+// ════════════════════════════════════════════════════════════
+describe('filterByBiome', () => {
+  const dummyScenes = [
+    { biome: 'polar',    region: 'A', title: 'T1', desc: 'D1', img: 'i1', thumb: 't1' },
+    { biome: 'mountain', region: 'B', title: 'T2', desc: 'D2', img: 'i2', thumb: 't2' },
+    { biome: 'desert',   region: 'C', title: 'T3', desc: 'D3', img: 'i3', thumb: 't3' },
+    { biome: 'mountain', region: 'D', title: 'T4', desc: 'D4', img: 'i4', thumb: 't4' }
+  ];
+
+  test('biome = "all" 回傳全部景點', () => {
+    expect(filterByBiome(dummyScenes, 'all')).toHaveLength(4);
+  });
+
+  test('biome 為 null/undefined 回傳全部景點', () => {
+    expect(filterByBiome(dummyScenes, null)).toHaveLength(4);
+    expect(filterByBiome(dummyScenes, undefined)).toHaveLength(4);
+  });
+
+  test('篩選單一 biome 回傳正確子集', () => {
+    const result = filterByBiome(dummyScenes, 'mountain');
+    expect(result).toHaveLength(2);
+    result.forEach(s => expect(s.biome).toBe('mountain'));
+  });
+
+  test('不存在的 biome 回傳空陣列', () => {
+    expect(filterByBiome(dummyScenes, 'nonexistent')).toHaveLength(0);
+  });
+
+  test('不修改原陣列（回傳副本）', () => {
+    const result = filterByBiome(dummyScenes, 'all');
+    result.push({ biome: 'extra', region: 'Z', title: 'TX', desc: 'DX', img: 'ix', thumb: 'tx' });
+    expect(dummyScenes).toHaveLength(4);
+  });
+
+  test('對 SCENES_DATA 篩選結果筆數正確', () => {
+    const mountainScenes = filterByBiome(SCENES_DATA, 'mountain');
+    expect(mountainScenes.length).toBeGreaterThan(0);
+    mountainScenes.forEach(s => expect(s.biome).toBe('mountain'));
+  });
+});
+
+// ════════════════════════════════════════════════════════════
+// 9. 隨機選取：pickRandom
+// ════════════════════════════════════════════════════════════
+describe('pickRandom', () => {
+  const arr = ['a', 'b', 'c', 'd', 'e'];
+
+  test('回傳陣列中的成員', () => {
+    const result = pickRandom(arr);
+    expect(arr).toContain(result);
+  });
+
+  test('指定 excludeIndex 時不回傳該索引的元素', () => {
+    for (let i = 0; i < 20; i++) {
+      expect(pickRandom(arr, 0)).not.toBe('a');
+    }
+  });
+
+  test('單元素陣列直接回傳該元素', () => {
+    expect(pickRandom(['only'])).toBe('only');
+  });
+
+  test('空陣列回傳 null', () => {
+    expect(pickRandom([])).toBeNull();
+  });
+
+  test('非陣列輸入回傳 null', () => {
+    expect(pickRandom(null)).toBeNull();
+    expect(pickRandom(undefined)).toBeNull();
+  });
+
+  test('多次呼叫會回傳不同元素（隨機性驗證）', () => {
+    const results = new Set();
+    for (let i = 0; i < 50; i++) results.add(pickRandom(arr));
+    expect(results.size).toBeGreaterThan(1);
+  });
+});
+
+// ════════════════════════════════════════════════════════════
+// 10. 取得 biome 清單：getBiomes
+// ════════════════════════════════════════════════════════════
+describe('getBiomes', () => {
+  const dummyScenes = [
+    { biome: 'polar',    region: 'A', title: 'T1', desc: 'D1', img: 'i1', thumb: 't1' },
+    { biome: 'mountain', region: 'B', title: 'T2', desc: 'D2', img: 'i2', thumb: 't2' },
+    { biome: 'polar',    region: 'C', title: 'T3', desc: 'D3', img: 'i3', thumb: 't3' },
+    { biome: 'desert',   region: 'D', title: 'T4', desc: 'D4', img: 'i4', thumb: 't4' }
+  ];
+
+  test('回傳不重複的 biome key 陣列', () => {
+    const biomes = getBiomes(dummyScenes);
+    expect(biomes).toHaveLength(3);
+    expect(new Set(biomes).size).toBe(3);
+  });
+
+  test('依出現順序排列', () => {
+    const biomes = getBiomes(dummyScenes);
+    expect(biomes[0]).toBe('polar');
+    expect(biomes[1]).toBe('mountain');
+    expect(biomes[2]).toBe('desert');
+  });
+
+  test('空陣列回傳空陣列', () => {
+    expect(getBiomes([])).toHaveLength(0);
+  });
+
+  test('SCENES_DATA 的 biome 均在 BIOMES 定義中', () => {
+    const sceneBiomes = getBiomes(SCENES_DATA);
+    const definedKeys = BIOMES.filter(b => b.key !== 'all').map(b => b.key);
+    sceneBiomes.forEach(b => expect(definedKeys).toContain(b));
+  });
+
+  test('BIOMES 常數包含 all 項目', () => {
+    const allBiome = BIOMES.find(b => b.key === 'all');
+    expect(allBiome).toBeDefined();
+    expect(allBiome.label).toBeTruthy();
+    expect(allBiome.emoji).toBeTruthy();
   });
 });

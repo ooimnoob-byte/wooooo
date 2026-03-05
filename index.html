@@ -313,12 +313,72 @@
       z-index: 15;
     }
 
+    /* ── 生態域篩選列 ── */
+    #biome-filter {
+      display: flex;
+      gap: 7px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+
+    .biome-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 12px;
+      border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.22);
+      background: rgba(0,0,0,0.38);
+      backdrop-filter: blur(10px);
+      font-size: 0.72rem;
+      font-family: inherit;
+      color: rgba(255,255,255,0.8);
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+      letter-spacing: 0.5px;
+    }
+
+    .biome-chip:hover {
+      background: rgba(255,255,255,0.14);
+      border-color: rgba(255,255,255,0.4);
+    }
+
+    .biome-chip.active {
+      background: var(--accent);
+      color: #000;
+      border-color: var(--accent);
+      font-weight: 700;
+    }
+
+    /* 生態域小標籤（顯示於地區旁） */
+    #slide-biome-label {
+      display: inline-block;
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 8px;
+      padding: 1px 8px;
+      font-size: 0.68rem;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+
+    /* 隨機推播通知變體 */
+    .notif-card.notif-random {
+      border-left: 3px solid #60c8ff;
+    }
+    .notif-card.notif-random .notif-title {
+      color: #60c8ff;
+    }
+
     /* ── 響應式 ── */
     @media (max-width: 600px) {
       header { padding: 16px 20px; }
       #info-bar { padding: 20px 20px 28px; }
       #notification-stack { width: calc(100vw - 40px); right: 20px; top: 80px; }
       #slide-title { font-size: 1.8rem; }
+      #biome-filter { gap: 5px; }
+      .biome-chip { font-size: 0.68rem; padding: 4px 10px; }
     }
   </style>
 </head>
@@ -345,9 +405,11 @@
 
 <!-- 底部資訊 -->
 <div id="info-bar">
+  <div id="biome-filter"></div>
   <div class="location-tag">
     <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5S13.38 11.5 12 11.5z"/></svg>
     <span id="slide-region">Loading...</span>
+    <span id="slide-biome-label"></span>
   </div>
   <div id="slide-title">載入中...</div>
   <div id="slide-desc">準備帶您環遊世界</div>
@@ -358,6 +420,9 @@
     </button>
     <button class="ctrl-btn" onclick="nextSlide()" title="下一張">
       <svg viewBox="0 0 24 24"><path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/></svg>
+    </button>
+    <button class="ctrl-btn" onclick="randomJump()" title="隨機跳轉 (R)">
+      <svg viewBox="0 0 24 24"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>
     </button>
     <div id="dots"></div>
     <div class="counter"><span id="cur-num">1</span> / <span id="total-num">1</span></div>
@@ -371,27 +436,30 @@
 <script src="src/slideshow.js"></script>
 
 <script>
-  // 使用模組提供的景點資料與純函式
-  const scenes = SCENES_DATA;
+  // ── 常數 ──
+  const RANDOM_NOTIF_INTERVAL = 15000; // 每 15 秒隨機推播一次
 
   // ── 狀態 ──
-  let current = 0;
+  let activeFilter = 'all';
+  let filteredIndices = [];   // SCENES_DATA 中符合篩選的索引清單
+  let currentPos = 0;         // 在 filteredIndices 中的位置
   let isAuto = true;
   let timer = null;
   let progressTimer = null;
   let progressValue = 0;
-  const INTERVAL = 7000; // ms
+  let randomNotifTimer = null;
 
-  // ── 初始化 DOM ──
+  // ── DOM refs ──
   const bgContainer = document.getElementById('bg-container');
   const dotsEl = document.getElementById('dots');
   const totalNumEl = document.getElementById('total-num');
   const curNumEl = document.getElementById('cur-num');
   const progressBar = document.getElementById('progress-bar');
   const notifStack = document.getElementById('notification-stack');
+  const biomeFilterEl = document.getElementById('biome-filter');
 
-  // 建立背景 slide
-  const bgSlides = scenes.map((s, i) => {
+  // ── 預先建立所有背景 slide（全部景點） ──
+  const bgSlides = SCENES_DATA.map(s => {
     const el = document.createElement('div');
     el.className = 'bg-slide';
     el.style.backgroundImage = `url('${s.img}')`;
@@ -399,44 +467,92 @@
     return el;
   });
 
-  // 建立進度點
-  totalNumEl.textContent = scenes.length;
-  scenes.forEach((_, i) => {
-    const d = document.createElement('div');
-    d.className = 'dot-item';
-    d.onclick = () => goTo(i);
-    dotsEl.appendChild(d);
+  // ── 建立生態域篩選 chips ──
+  BIOMES.forEach(b => {
+    const chip = document.createElement('button');
+    chip.className = 'biome-chip' + (b.key === 'all' ? ' active' : '');
+    chip.dataset.biome = b.key;
+    if (b.key === 'all') {
+      chip.textContent = `${b.emoji} ${b.label}`;
+    } else {
+      const count = SCENES_DATA.filter(s => s.biome === b.key).length;
+      chip.textContent = `${b.emoji} ${b.label} (${count})`;
+    }
+    chip.onclick = () => setFilter(b.key);
+    biomeFilterEl.appendChild(chip);
   });
 
-  // ── 切換幻燈片 ──
-  function goTo(index, fromNotif = false) {
-    bgSlides[current].classList.remove('active');
-    dotsEl.children[current].classList.remove('active');
+  // ── 篩選設定 ──
+  function setFilter(biomeKey) {
+    activeFilter = biomeKey;
+    filteredIndices = biomeKey === 'all'
+      ? SCENES_DATA.map((_, i) => i)
+      : SCENES_DATA.reduce((acc, s, i) => { if (s.biome === biomeKey) acc.push(i); return acc; }, []);
 
-    current = (index + scenes.length) % scenes.length;
+    document.querySelectorAll('.biome-chip').forEach(c => {
+      c.classList.toggle('active', c.dataset.biome === biomeKey);
+    });
 
-    bgSlides[current].classList.add('active');
-    dotsEl.children[current].classList.add('active');
-    curNumEl.textContent = current + 1;
+    currentPos = 0;
+    rebuildDots();
+    renderSlide(false);
+  }
 
-    const s = scenes[current];
+  // ── 進度點 ──
+  function rebuildDots() {
+    dotsEl.innerHTML = '';
+    filteredIndices.forEach((_, pos) => {
+      const d = document.createElement('div');
+      d.className = 'dot-item';
+      d.onclick = () => goToPos(pos);
+      dotsEl.appendChild(d);
+    });
+    totalNumEl.textContent = filteredIndices.length;
+  }
+
+  function updateDotActive() {
+    Array.from(dotsEl.children).forEach((d, i) => {
+      d.classList.toggle('active', i === currentPos);
+    });
+    curNumEl.textContent = currentPos + 1;
+  }
+
+  // ── 渲染目前幻燈片 ──
+  function renderSlide(withNotif) {
+    const globalIdx = filteredIndices[currentPos];
+    bgSlides.forEach((sl, i) => sl.classList.toggle('active', i === globalIdx));
+
+    const s = SCENES_DATA[globalIdx];
     document.getElementById('slide-region').textContent = s.region;
     document.getElementById('slide-title').textContent = s.title;
     document.getElementById('slide-desc').textContent = s.desc;
 
+    const biome = BIOMES.find(b => b.key === s.biome);
+    document.getElementById('slide-biome-label').textContent = biome ? `${biome.emoji} ${biome.label}` : '';
+
+    updateDotActive();
     resetProgress();
-    if (!fromNotif) showNotification(current);
+    if (withNotif) showSlideNotification(globalIdx);
   }
 
-  function nextSlide() { goTo(current + 1); }
-  function prevSlide() { goTo(current - 1); }
+  function goToPos(pos, withNotif = true) {
+    currentPos = ((pos % filteredIndices.length) + filteredIndices.length) % filteredIndices.length;
+    renderSlide(withNotif);
+  }
+
+  function nextSlide() { goToPos(currentPos + 1); }
+  function prevSlide() { goToPos(currentPos - 1); }
+
+  function randomJump() {
+    if (filteredIndices.length < 2) return;
+    const others = filteredIndices.map((_, i) => i).filter(i => i !== currentPos);
+    goToPos(others[Math.floor(Math.random() * others.length)]);
+  }
 
   // ── 自動播放 ──
   function startAuto() {
     clearInterval(timer);
-    timer = setInterval(() => {
-      nextSlide();
-    }, INTERVAL);
+    timer = setInterval(nextSlide, DEFAULT_INTERVAL);
   }
 
   function stopAuto() { clearInterval(timer); clearInterval(progressTimer); }
@@ -463,41 +579,45 @@
     progressValue = 0;
     progressBar.style.transition = 'none';
     progressBar.style.width = '0%';
-    if (isAuto) {
-      requestAnimationFrame(() => startProgress());
-    }
+    if (isAuto) requestAnimationFrame(startProgress);
   }
 
   function startProgress() {
     clearInterval(progressTimer);
-    const step = 100 / (INTERVAL / 100);
+    const step = 100 / (DEFAULT_INTERVAL / 100);
     progressBar.style.transition = 'width 0.1s linear';
     progressTimer = setInterval(() => {
       progressValue += step;
-      if (progressValue >= 100) {
-        progressValue = 100;
-        clearInterval(progressTimer);
-      }
+      if (progressValue >= 100) { progressValue = 100; clearInterval(progressTimer); }
       progressBar.style.width = progressValue + '%';
     }, 100);
   }
 
-  // ── 推播通知 ──
+  // ── 通知系統 ──
   let notifQueue = [];
   let notifShowing = false;
 
-  function showNotification(index) {
-    const s = scenes[index];
-    notifQueue.push(s);
+  function showSlideNotification(globalIdx) {
+    notifQueue.push({ scene: SCENES_DATA[globalIdx], type: 'slide' });
+    if (!notifShowing) processNotifQueue();
+  }
+
+  // 隨機推播：從目前篩選的景點中隨機選一個（排除目前）
+  function triggerRandomPush() {
+    if (filteredIndices.length < 2) return;
+    const candidates = filteredIndices.filter((_, i) => i !== currentPos);
+    const targetGlobal = candidates[Math.floor(Math.random() * candidates.length)];
+    const targetPos = filteredIndices.indexOf(targetGlobal);
+    notifQueue.push({ scene: SCENES_DATA[targetGlobal], type: 'random', targetPos });
     if (!notifShowing) processNotifQueue();
   }
 
   function processNotifQueue() {
     if (notifQueue.length === 0) { notifShowing = false; return; }
     notifShowing = true;
-    const s = notifQueue.shift();
+    const item = notifQueue.shift();
+    const { scene: s, type, targetPos } = item;
 
-    // 最多保留 3 張
     while (notifStack.children.length >= 3) {
       const oldest = notifStack.firstElementChild;
       oldest.classList.add('hide');
@@ -505,29 +625,26 @@
     }
 
     const card = document.createElement('div');
-    card.className = 'notif-card';
+    card.className = 'notif-card' + (type === 'random' ? ' notif-random' : '');
     card.innerHTML = `
       <div class="notif-thumb" style="background-image:url('${s.thumb}')"></div>
       <div class="notif-body">
-        <div class="notif-title">📍 ${s.region}</div>
+        <div class="notif-title">${type === 'random' ? '🎲 探索推薦' : '📍 ' + s.region}</div>
         <div class="notif-name">${s.title}</div>
-        <div class="notif-desc">點擊停留此景點</div>
+        <div class="notif-desc">${type === 'random' ? s.region : '點擊停留此景點'}</div>
       </div>
     `;
     card.onclick = () => {
+      if (type === 'random') goToPos(targetPos, false); // 無聲跳轉不觸發新通知
       isAuto = false;
-      const badge = document.getElementById('auto-badge');
-      badge.classList.add('paused');
+      document.getElementById('auto-badge').classList.add('paused');
       document.getElementById('auto-label').textContent = '已暫停';
       stopAuto();
       dismissCard(card);
     };
     notifStack.appendChild(card);
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => card.classList.add('show'));
-    });
+    requestAnimationFrame(() => requestAnimationFrame(() => card.classList.add('show')));
 
-    // 4 秒後自動消失
     setTimeout(() => {
       dismissCard(card);
       setTimeout(processNotifQueue, 300);
@@ -540,11 +657,18 @@
     setTimeout(() => { if (card.parentNode) card.remove(); }, 500);
   }
 
+  // ── 隨機推播計時器 ──
+  function startRandomPush() {
+    clearInterval(randomNotifTimer);
+    randomNotifTimer = setInterval(triggerRandomPush, RANDOM_NOTIF_INTERVAL);
+  }
+
   // ── 鍵盤快捷鍵 ──
   document.addEventListener('keydown', e => {
     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') nextSlide();
     if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') prevSlide();
     if (e.key === ' ') { e.preventDefault(); toggleAuto(); }
+    if (e.key === 'r' || e.key === 'R') randomJump();
   });
 
   // ── 觸控滑動 ──
@@ -556,9 +680,9 @@
   });
 
   // ── 啟動 ──
-  goTo(0);
+  setFilter('all');
   startAuto();
-  startProgress();
+  startRandomPush();
 </script>
 </body>
 </html>
